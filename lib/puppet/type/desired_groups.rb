@@ -35,11 +35,20 @@ Puppet::Type.newtype(:desired_groups) do
             groups
         end
 
-        # skip groups that does not exist
-        munge do |group|
-            if get_existing_groups.include? group
-                group
-            end
+        # Skip groups that do not exist, checked when the resource is evaluated: munge
+        # runs when the agent converts the catalog, before anything is applied, so a
+        # group created earlier in the same run was added only on the next run.
+        def should
+            values = super
+            return values if values.nil?
+            existing = get_existing_groups
+            values.map { |group| group if existing.include?(group) }
+        end
+
+        # The provider reports nil for every desired group the user is not in, so
+        # compare with the filtered list, not with the declared one.
+        def insync?(is)
+            is.is_a?(Array) && is == should
         end
     end
 end

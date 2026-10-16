@@ -3,8 +3,21 @@ Puppet::Type.newtype(:desired_groups) do
 
     desc "Adding user only to existing unix groups. Desired groups passed as parameter."
 
+    # A desired group that the same catalog creates - as a group, or as the
+    # private group useradd makes with a user of that name - must exist before
+    # the groups are checked (see should below). Use the declared list:
+    # self[:groups] already drops the groups that do not exist yet.
+    def declared_groups
+        groups = @parameters[:groups]
+        groups ? groups.shouldorig.compact : []
+    end
+
     autorequire(:user) do
-        self[:name]
+        [self[:name]] + declared_groups
+    end
+
+    autorequire(:group) do
+        declared_groups
     end
 
     newparam(:name) do
@@ -35,11 +48,20 @@ Puppet::Type.newtype(:desired_groups) do
             groups
         end
 
-        # skip groups that does not exist
-        munge do |group|
-            if get_existing_groups.include? group
-                group
-            end
+        # Skip groups that do not exist, checked when the resource is evaluated: munge
+        # runs when the agent converts the catalog, before anything is applied, so a
+        # group created earlier in the same run was added only on the next run.
+        def should
+            values = super
+            return values if values.nil?
+            existing = get_existing_groups
+            values.map { |group| group if existing.include?(group) }
+        end
+
+        # The provider reports nil for every desired group the user is not in, so
+        # compare with the filtered list, not with the declared one.
+        def insync?(is)
+            is.is_a?(Array) && is == should
         end
     end
 end

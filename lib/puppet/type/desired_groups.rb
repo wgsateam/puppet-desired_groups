@@ -3,8 +3,21 @@ Puppet::Type.newtype(:desired_groups) do
 
     desc "Adding user only to existing unix groups. Desired groups passed as parameter."
 
+    # A desired group that the same catalog creates - as a group, or as the
+    # private group useradd makes with a user of that name - must exist before
+    # the groups are checked (see should below). Use the declared list:
+    # self[:groups] already drops the groups that do not exist yet.
+    def declared_groups
+        groups = @parameters[:groups]
+        groups ? groups.shouldorig.compact : []
+    end
+
     autorequire(:user) do
-        self[:name]
+        [self[:name]] + declared_groups
+    end
+
+    autorequire(:group) do
+        declared_groups
     end
 
     newparam(:name) do
